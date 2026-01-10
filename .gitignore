@@ -9,6 +9,7 @@ wheels/
 # Virtual environments
 .venv
 config.py
+discordtoken.txt
 
 # Untracked files
 pokedex_embeddings-wnumpy.pt
