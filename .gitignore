@@ -9,3 +9,8 @@ wheels/
 # Virtual environments
 .venv
 config.py
+
+# Untracked files
+pokedex_embeddings-wnumpy.pt
+pokedex_embeddings.pt
+dataset/
