@@ -14,4 +14,5 @@ discordtoken.txt
 # Untracked files
 pokedex_embeddings-wnumpy.pt
 pokedex_embeddings.pt
+pokedex_embeddings-w-pokeapi.pt
 dataset/

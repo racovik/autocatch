@@ -11,7 +11,7 @@ from torchvision import models, transforms
 # =============================
 BASE_DIR = "dataset/base"
 TEST_IMAGE = "test/teste.png"
-IMAGE_SIZE = 224
+IMAGE_SIZE = 224  # igual tambem no identify
 torch.backends.nnpack.enabled = False
 
 
@@ -21,13 +21,19 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # Transformações
 # =============================
 transform = transforms.Compose(
-    [transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)), transforms.ToTensor()]
+    [
+        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+        transforms.ToTensor(),
+        # Normalização padrão do ImageNet (Média e Desvio Padrão)
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ]
 )
-
 # =============================
 # Modelo (extrator de embeddings)
 # =============================
-model = models.mobilenet_v2(pretrained=True)
+model = models.mobilenet_v2(
+    weights=models.MobileNet_V2_Weights.DEFAULT
+)  # tem que ser igual no identify
 model.classifier = nn.Identity()  # remove a cabeça de classificação
 model.eval()
 model.to(device)
@@ -66,7 +72,7 @@ for pokemon in os.listdir(BASE_DIR):
     base_embeddings[pokemon] = get_embedding(img_path)
 
 
-torch.save(base_embeddings, "pokedex_embeddings-wnumpy.pt")
+torch.save(base_embeddings, "pokedex_embeddings-w-pokeapi.pt")
 
 print(f"[OK] {len(base_embeddings)} Pokémon carregados.")
 
