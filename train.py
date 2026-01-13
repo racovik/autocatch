@@ -64,15 +64,40 @@ for pokemon in os.listdir(BASE_DIR):
     if not os.path.isdir(pokemon_dir):
         continue
 
-    images = os.listdir(pokemon_dir)
+    images = [
+        f
+        for f in os.listdir(pokemon_dir)
+        if f.lower().endswith((".png", ".jpg", ".jpeg"))
+    ]
     if len(images) == 0:
         continue
 
-    img_path = os.path.join(pokemon_dir, images[0])
-    base_embeddings[pokemon] = get_embedding(img_path)
+    all_embs = []
+    for img_name in images:
+        img_path = os.path.join(pokemon_dir, img_name)
+        all_embs.append(get_embedding(img_path))
+
+    # Faz a média de todos os vetores daquele pokemon
+    avg_emb = torch.stack(all_embs).mean(dim=0)
+    # Normaliza a média para manter o vetor unitário
+    avg_emb = avg_emb / torch.norm(avg_emb)
+
+    base_embeddings[pokemon] = avg_emb
+
+# for pokemon in os.listdir(BASE_DIR):
+#     pokemon_dir = os.path.join(BASE_DIR, pokemon)
+#     if not os.path.isdir(pokemon_dir):
+#         continue
+
+#     images = os.listdir(pokemon_dir)
+#     if len(images) == 0:
+#         continue
+
+#     img_path = os.path.join(pokemon_dir, images[0])
+#     base_embeddings[pokemon] = get_embedding(img_path)
 
 
-torch.save(base_embeddings, "pokedex_embeddings-w-pokeapi.pt")
+torch.save(base_embeddings, "pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv.pt")
 
 print(f"[OK] {len(base_embeddings)} Pokémon carregados.")
 

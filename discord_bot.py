@@ -15,7 +15,7 @@ description = "Pokereal Autocatch"
 
 bot = commands.Bot(command_prefix="?", description=description, self_bot=True)
 # ----- CONFIG -----
-EMBEDDINGS_PATH = "pokedex_embeddings-w-pokeapi.pt"
+EMBEDDINGS_PATH = "pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv.pt"
 IMAGE_TESTE = "test/teste.png"  # imagem que você quer identificar
 DEVICE = "cpu"  # ou "cuda"/"rocm" se estiver usando GPU
 IMAGE_SIZE = 224
@@ -58,17 +58,41 @@ async def on_ready():
     print("------")
 
 
-def identify_pokemon(embedding):
-    melhor_pokemon = None
-    melhor_score = -1
+# def identify_pokemon(embedding):
+#     melhor_pokemon = None
+#     melhor_score = -1
 
+#     for nome, emb in base_embeddings.items():
+#         score = F.cosine_similarity(embedding, emb, dim=0).item()
+#         if score > melhor_score:
+#             melhor_score = score
+#             melhor_pokemon = nome
+
+#     return melhor_pokemon, melhor_score
+
+
+def identify_pokemon(embedding):
+    resultados = []
+
+    # 1. Calcula o score para TODOS da base
     for nome, emb in base_embeddings.items():
         score = F.cosine_similarity(embedding, emb, dim=0).item()
-        if score > melhor_score:
-            melhor_score = score
-            melhor_pokemon = nome
+        resultados.append({"nome": nome, "score": score})
 
-    return melhor_pokemon, melhor_score
+    # 2. Ordena do maior score para o menor
+    # (O melhor será o índice 0)
+    resultados.sort(key=lambda x: x["score"], reverse=True)
+
+    # 3. Pega o melhor para o retorno padrão
+    melhor_pokemon = resultados[0]["nome"]
+    melhor_score = resultados[0]["score"]
+
+    # 4. Cria a string com o ranking dos outros (Top 5, por exemplo)
+    ranking_str = "\n--- Ranking de Similaridade ---\n"
+    for i, res in enumerate(resultados[:5], 1):  # Pega os 5 primeiros
+        ranking_str += f"{i}º. {res['nome']}: {res['score']:.4f}\n"
+
+    return melhor_pokemon, melhor_score, ranking_str
 
 
 @bot.event
@@ -84,16 +108,20 @@ async def on_message(message: discord.Message):
                         print(image_url)
                         melhor_pokemon = None
                         melhor_score = -1
+                        await asyncio.sleep(1)
                         embed_image_emb = await asyncio.to_thread(
                             get_embedding_from_url, image_url
                         )
-                        melhor_pokemon, melhor_score = await asyncio.to_thread(
-                            identify_pokemon, embed_image_emb
-                        )
+                        (
+                            melhor_pokemon,
+                            melhor_score,
+                            ranking_str,
+                        ) = await asyncio.to_thread(identify_pokemon, embed_image_emb)
                         await message.channel.send(
                             f"<@665301904791699476> c {melhor_pokemon}"
                         )
-                        await message.channel.send(f"Similaridade: {melhor_score:.4f}")
+                        await asyncio.sleep(1)
+                        await message.reply(ranking_str)
 
 
 from config import token
