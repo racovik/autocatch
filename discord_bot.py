@@ -4,6 +4,7 @@ from io import BytesIO
 
 import discord
 import httpx
+import numpy as np
 import torch
 import torch.nn.functional as F
 from discord.ext import commands
@@ -14,18 +15,18 @@ description = "Pokereal Autocatch"
 
 bot = commands.Bot(command_prefix="?", description=description, self_bot=True)
 # ----- CONFIG -----
-EMBEDDINGS_PATH = "pokedex_embeddings-wnumpy.pt"
+EMBEDDINGS_PATH = "pokedex_embeddings-w-pokeapi.pt"
 IMAGE_TESTE = "test/teste.png"  # imagem que você quer identificar
 DEVICE = "cpu"  # ou "cuda"/"rocm" se estiver usando GPU
-
+IMAGE_SIZE = 224
 transform = transforms.Compose(
     [
-        transforms.Resize((224, 224)),
+        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
         transforms.ToTensor(),
-        transforms.Lambda(lambda x: x[:3]),  # garante RGB
+        # Normalização padrão do ImageNet (Média e Desvio Padrão)
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ]
 )
-
 # ----- MODELO BASE -----
 model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
 model.classifier = torch.nn.Identity()
@@ -45,9 +46,10 @@ def get_embedding_from_url(url):
 
     with torch.no_grad():
         emb = model(img)
-        emb = F.normalize(emb, dim=1)
 
-    return emb.squeeze(0)
+    emb = emb.squeeze().cpu()
+    emb = emb / np.linalg.norm(emb)  # normalização
+    return emb
 
 
 @bot.event
@@ -77,21 +79,21 @@ async def on_message(message: discord.Message):
                 embed = message.embeds[0]
                 print(embed)
                 if "A wild pokémon has аppeаred!" in embed.title:
-                    image_url = embed.image.url
-                    print(image_url)
-                    await message.channel.send("zzzzzz")
-                    melhor_pokemon = None
-                    melhor_score = -1
-                    embed_image_emb = await asyncio.to_thread(
-                        get_embedding_from_url, image_url
-                    )
-                    melhor_pokemon, melhor_score = await asyncio.to_thread(
-                        identify_pokemon, embed_image_emb
-                    )
-                    await message.channel.send(
-                        f"<@665301904791699476> c {melhor_pokemon}"
-                    )
-                    await message.channel.send(f"Similaridade: {melhor_score:.4f}")
+                    async with message.channel.typing():
+                        image_url = embed.image.url
+                        print(image_url)
+                        melhor_pokemon = None
+                        melhor_score = -1
+                        embed_image_emb = await asyncio.to_thread(
+                            get_embedding_from_url, image_url
+                        )
+                        melhor_pokemon, melhor_score = await asyncio.to_thread(
+                            identify_pokemon, embed_image_emb
+                        )
+                        await message.channel.send(
+                            f"<@665301904791699476> c {melhor_pokemon}"
+                        )
+                        await message.channel.send(f"Similaridade: {melhor_score:.4f}")
 
 
 from config import token
