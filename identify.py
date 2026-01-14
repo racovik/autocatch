@@ -8,7 +8,7 @@ from torchvision import models, transforms
 
 # ----- CONFIG -----
 EMBEDDINGS_PATH = "pokedex_embeddings-w-pokeapi.pt"
-IMAGE_TESTE = "test/teste.png"  # imagem que você quer identificar
+IMAGE_TESTE = "test/pokemon.jpg"  # imagem que você quer identificar
 DEVICE = "cpu"  # ou "cuda"/"rocm" se estiver usando GPU
 IMAGE_SIZE = 224
 
@@ -41,8 +41,17 @@ base_embeddings = torch.load(EMBEDDINGS_PATH, map_location=DEVICE, weights_only=
 #     return emb.squeeze(0)
 
 
+# Fundo branco pois o bot pode bugar se ficar processando com fundo branco
+def process_with_white_background(image_path):
+    img_rgba = Image.open(image_path).convert("RGBA")
+    fundo_branco = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
+    img_final = Image.alpha_composite(fundo_branco, img_rgba)
+    return img_final.convert("RGB")
+
+
 def get_embedding(image_path):
-    img = Image.open(image_path).convert("RGB")
+    img = process_with_white_background(image_path)
+    # img = Image.open(image_path).convert("RGB")
     img = transform(img).unsqueeze(0).to(DEVICE)
 
     with torch.no_grad():

@@ -15,7 +15,9 @@ description = "Pokereal Autocatch"
 
 bot = commands.Bot(command_prefix="?", description=description, self_bot=True)
 # ----- CONFIG -----
-EMBEDDINGS_PATH = "pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv.pt"
+EMBEDDINGS_PATH = (
+    "pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv.pt"
+)
 IMAGE_TESTE = "test/teste.png"  # imagem que você quer identificar
 DEVICE = "cpu"  # ou "cuda"/"rocm" se estiver usando GPU
 IMAGE_SIZE = 224
@@ -37,11 +39,17 @@ model.to(DEVICE)
 base_embeddings = torch.load(EMBEDDINGS_PATH, map_location=DEVICE, weights_only=False)
 
 
+def process_with_white_background(image: bytes):
+    img_rgba = Image.open(BytesIO(image)).convert("RGBA")
+    fundo_branco = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
+    img_final = Image.alpha_composite(fundo_branco, img_rgba)
+    return img_final.convert("RGB")
+
 def get_embedding_from_url(url):
     response = httpx.get(url, timeout=10)
     response.raise_for_status()
-
-    img = Image.open(BytesIO(response.content)).convert("RGB")
+    img =
+    # img = Image.open(BytesIO(response.content)).convert("RGB")
     img = transform(img).unsqueeze(0).to(DEVICE)
 
     with torch.no_grad():
@@ -98,7 +106,7 @@ def identify_pokemon(embedding):
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.id == 665301904791699476:
-        if message.channel.id == 1422970015183011900:
+        if message.channel.id == 941365516918984724:
             if message.embeds:
                 embed = message.embeds[0]
                 print(embed)

@@ -39,11 +39,31 @@ model.eval()
 model.to(device)
 
 
+
+
+
 # =============================
 # Função para gerar embedding
 # =============================
+# Fundo branco pois o bot pode bugar se ficar processando com fundo branco
+def process_with_white_background(image_path):
+    # 1. Abre como RGBA para garantir que temos o canal de transparência
+    img_rgba = Image.open(image_path).convert("RGBA")
+    
+    # 2. Cria uma imagem sólida branca do mesmo tamanho
+    # (255, 255, 255) é o código para Branco Puro
+    fundo_branco = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
+    
+    # 3. Faz o "Alpha Composite" (Colar o pokemon por cima do fundo)
+    # Isso usa o canal Alpha do pokemon para saber onde pintar o branco
+    img_final = Image.alpha_composite(fundo_branco, img_rgba)
+    
+    # 4. Agora sim, converte para RGB (remove o canal Alpha que não é mais necessário)
+    return img_final.convert("RGB")
+
 def get_embedding(image_path):
-    img = Image.open(image_path).convert("RGB")
+    img = process_with_white_background(image_path)
+    # img = Image.open(image_path).convert("RGB")
     img = transform(img).unsqueeze(0).to(device)
 
     with torch.no_grad():
