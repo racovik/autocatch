@@ -15,11 +15,14 @@ description = "Pokereal Autocatch"
 
 bot = commands.Bot(command_prefix="?", description=description, self_bot=True)
 # ----- CONFIG -----
-EMBEDDINGS_PATH = (
-    "pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv.pt"
-)
+EMBEDDINGS_PATH = "models/pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv-white-background.ptmodels/pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv-white-background.pt"
 IMAGE_TESTE = "test/teste.png"  # imagem que você quer identificar
-DEVICE = "cpu"  # ou "cuda"/"rocm" se estiver usando GPU
+DEVICE = (
+    "cuda" if torch.cuda.is_available() else "cpu"
+)  # ou "cuda"/"rocm" se estiver usando GPU
+if DEVICE == "cuda":
+    print("running on cuda:")
+    print(torch.cuda.current_device())
 IMAGE_SIZE = 224
 transform = transforms.Compose(
     [
@@ -45,10 +48,11 @@ def process_with_white_background(image: bytes):
     img_final = Image.alpha_composite(fundo_branco, img_rgba)
     return img_final.convert("RGB")
 
+
 def get_embedding_from_url(url):
     response = httpx.get(url, timeout=10)
     response.raise_for_status()
-    img =
+    img = process_with_white_background(response.content)
     # img = Image.open(BytesIO(response.content)).convert("RGB")
     img = transform(img).unsqueeze(0).to(DEVICE)
 
