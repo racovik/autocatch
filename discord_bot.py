@@ -15,8 +15,7 @@ description = "Pokereal Autocatch"
 
 bot = commands.Bot(command_prefix="?", description=description, self_bot=True)
 # ----- CONFIG -----
-EMBEDDINGS_PATH = "models/pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv-white-background.pt"
-IMAGE_TESTE = "test/teste.png"  # imagem que você quer identificar
+EMBEDDINGS_PATH = "models/pokerealmac_v1.0.pt"  # model
 DEVICE = (
     "cuda" if torch.cuda.is_available() else "cpu"
 )  # ou "cuda"/"rocm" se estiver usando GPU
@@ -24,6 +23,8 @@ if DEVICE == "cuda":
     print("running on cuda:")
     print(torch.cuda.current_device())
 IMAGE_SIZE = 224
+
+# ISSO TEM Q SER IGUAL AO DO TREINAMENTO, ENT N MUDAR
 transform = transforms.Compose(
     [
         transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
@@ -33,15 +34,18 @@ transform = transforms.Compose(
     ]
 )
 # ----- MODELO BASE -----
-model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT) # MobileNEt leve para rodar no Termux
+model = models.mobilenet_v2(
+    weights=models.MobileNet_V2_Weights.DEFAULT
+)  # MobileNEt Modelo feito para uso no Mobile
 model.classifier = torch.nn.Identity()
-model.eval()
+model.eval()  # model.eval() feito para parar o treinamento do modelo, pelo q eu entendi
 model.to(DEVICE)
 
 # ----- LOAD DOS EMBEDDINGS -----
 base_embeddings = torch.load(EMBEDDINGS_PATH, map_location=DEVICE, weights_only=False)
 
 
+# white backgroud pois no preto a IA poderia confundir as bordas dos pokemons com o fundo preto.
 def process_with_white_background(image: bytes):
     img_rgba = Image.open(BytesIO(image)).convert("RGBA")
     fundo_branco = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
@@ -70,6 +74,7 @@ async def on_ready():
     print("------")
 
 
+# identify pokemon padrãozinho
 # def identify_pokemon(embedding):
 #     melhor_pokemon = None
 #     melhor_score = -1
