@@ -13,7 +13,11 @@ BASE_DIR = "dataset/base"
 TEST_IMAGE = "test/teste.png"
 IMAGE_SIZE = 224  # igual tambem no identify
 torch.backends.nnpack.enabled = False
-
+basedir = "models/"
+name = input("Digite o nome do modelo: ")
+if os.path.exists(f"{basedir}{name}.pt"):
+    print(f"Modelo {name} já existe!")
+    exit(1)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 if device == "cuda":
@@ -110,7 +114,7 @@ for pokemon in os.listdir(BASE_DIR):
 
 torch.save(
     base_embeddings,
-    "models/pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv-white-background.pt",
+    f"{basedir}{name}.pt",
 )
 
 print(f"[OK] {len(base_embeddings)} Pokémon carregados.")
