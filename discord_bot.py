@@ -129,11 +129,9 @@ async def on_message(message: discord.Message):
         if message.channel.id == 1422970015183011900:
             if message.embeds:
                 embed = message.embeds[0]
-                print(embed)
-                if "A wild pokémon has аppeаred!" in embed.title:
+                if embed.title and "A wild pokémon has аppeаred!" in embed.title:
                     async with message.channel.typing():
                         image_url = embed.image.url
-                        print(image_url)
                         melhor_pokemon = None
                         melhor_score = -1
                         await asyncio.sleep(1)
