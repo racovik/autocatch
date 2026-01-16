@@ -15,7 +15,7 @@ description = "Pokereal Autocatch"
 
 bot = commands.Bot(command_prefix="?", description=description, self_bot=True)
 # ----- CONFIG -----
-EMBEDDINGS_PATH = "models/pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv-white-background.ptmodels/pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv-white-background.pt"
+EMBEDDINGS_PATH = "models/pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv-white-background.pt"
 IMAGE_TESTE = "test/teste.png"  # imagem que você quer identificar
 DEVICE = (
     "cuda" if torch.cuda.is_available() else "cpu"
@@ -33,7 +33,7 @@ transform = transforms.Compose(
     ]
 )
 # ----- MODELO BASE -----
-model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
+model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT) # MobileNEt leve para rodar no Termux
 model.classifier = torch.nn.Identity()
 model.eval()
 model.to(DEVICE)
@@ -59,8 +59,8 @@ def get_embedding_from_url(url):
     with torch.no_grad():
         emb = model(img)
 
-    emb = emb.squeeze().cpu()
-    emb = emb / np.linalg.norm(emb)  # normalização
+    emb = emb.squeeze()
+    emb = emb / torch.norm(emb)  # normalização
     return emb
 
 
@@ -107,10 +107,13 @@ def identify_pokemon(embedding):
     return melhor_pokemon, melhor_score, ranking_str
 
 
+ranking = True
+
+
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.id == 665301904791699476:
-        if message.channel.id == 941365516918984724:
+        if message.channel.id == 1422970015183011900:
             if message.embeds:
                 embed = message.embeds[0]
                 print(embed)
@@ -132,8 +135,9 @@ async def on_message(message: discord.Message):
                         await message.channel.send(
                             f"<@665301904791699476> c {melhor_pokemon}"
                         )
-                        await asyncio.sleep(1)
-                        await message.reply(ranking_str)
+                        if ranking:
+                            await asyncio.sleep(1)
+                            await message.reply(ranking_str)
 
 
 from config import token

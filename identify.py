@@ -7,9 +7,9 @@ from PIL import Image
 from torchvision import models, transforms
 
 # ----- CONFIG -----
-EMBEDDINGS_PATH = "pokedex_embeddings-w-pokeapi.pt"
+EMBEDDINGS_PATH = "models/pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv-white-background.pt"
 IMAGE_TESTE = "test/pokemon.jpg"  # imagem que você quer identificar
-DEVICE = "cpu"  # ou "cuda"/"rocm" se estiver usando GPU
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"  # cuda ou CPU.
 IMAGE_SIZE = 224
 
 # ----- TRANSFORM (TEM QUE SER IGUAL AO TREINO) -----
@@ -52,13 +52,17 @@ def process_with_white_background(image_path):
 def get_embedding(image_path):
     img = process_with_white_background(image_path)
     # img = Image.open(image_path).convert("RGB")
-    img = transform(img).unsqueeze(0).to(DEVICE)
+    img = (
+        transform(img).unsqueeze(0).to(DEVICE)
+    )  # unsqueeze TO Device, ou seja, vai para GPU ou CPU.
 
     with torch.no_grad():
         emb = model(img)
 
-    emb = emb.squeeze().cpu()
-    emb = emb / np.linalg.norm(emb)  # normalização
+    emb = emb.squeeze()  # removing .cpu()
+    emb = emb / torch.norm(
+        emb
+    )  # normalização np.linalg.norm --> torch.norm para desempenho em GPU
     return emb
 
 
