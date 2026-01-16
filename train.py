@@ -7,7 +7,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
 from torchvision import models, transforms
-from
 
 logging.basicConfig(level=logging.INFO)
 
@@ -32,7 +31,7 @@ if device == "cuda":
     logging.debug(f"current device: {torch.cuda.current_device()}")
 else:
     logging.info(
-        "CUDA not available, falling back to CPU | ou seja, usando a CPU para treinar, tlgd"
+        "CUDA not available, falling back to CPU | ou seja, usando a CPU para treinar, tlgd."
     )
 
 # =============================
@@ -84,6 +83,7 @@ def get_embedding(image_path):
 # =============================
 # Criar banco de embeddings
 # =============================
+logging.info("Creating base embeddings...")
 base_embeddings = {}
 
 for pokemon in os.listdir(BASE_DIR):
@@ -128,6 +128,8 @@ torch.save(
     base_embeddings,
     f"{basedir}{name}.pt",
 )
+
+logging.info(f"Base embeddings saved. on {basedir}{name}.pt")
 
 print(f"[OK] {len(base_embeddings)} Pokémon carregados.")
 
