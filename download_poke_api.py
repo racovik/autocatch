@@ -12,7 +12,7 @@ for n in range(1, 1026):
     if response.status_code == 200:
         data = response.json()
         name = data["name"]
-        if os.path.exists(f"dataaset/base/{name}/pokeapi.png"):
+        if os.path.exists(f"dataset/base/{name}/pokeapi.png"):
             print("this pokemon is already in database.")
             continue
         artwork_front_default = data["sprites"]["other"]["official-artwork"][
