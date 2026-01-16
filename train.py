@@ -8,7 +8,9 @@ import torch.nn.functional as F
 from PIL import Image
 from torchvision import models, transforms
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
+)
 
 # =============================
 # Configurações
