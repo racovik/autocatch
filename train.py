@@ -1,14 +1,21 @@
+import logging
 import os
 
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from PIL import Image
 from torchvision import models, transforms
+from
+
+logging.basicConfig(level=logging.INFO)
 
 # =============================
 # Configurações
 # =============================
+
+
 BASE_DIR = "dataset/base"
 TEST_IMAGE = "test/teste.png"
 IMAGE_SIZE = 224  # igual tambem no identify
@@ -21,8 +28,13 @@ if os.path.exists(f"{basedir}{name}.pt"):
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 if device == "cuda":
-    print("running on cuda")
-    print(torch.cuda.current_device())
+    logging.debug("running on cuda")
+    logging.debug(f"current device: {torch.cuda.current_device()}")
+else:
+    logging.info(
+        "CUDA not available, falling back to CPU | ou seja, usando a CPU para treinar, tlgd"
+    )
+
 # =============================
 # Transformações
 # =============================
@@ -130,7 +142,7 @@ def identify_pokemon(image_path):
     best_score = -1.0
 
     for pokemon, emb in base_embeddings.items():
-        score = np.dot(test_emb, emb)  # cosine similarity
+        score = F.cosine_similarity(test_emb, emb, dim=0).item()  # cosine similarity
         if score > best_score:
             best_score = score
             best_pokemon = pokemon
