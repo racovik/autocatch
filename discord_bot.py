@@ -4,14 +4,21 @@ from io import BytesIO
 
 import discord
 import httpx
-import numpy as np
 import torch
 import torch.nn.functional as F
 from discord.ext import commands
 from PIL import Image
 from torchvision import models, transforms
+import logging
+
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
+)
+
 
 description = "Pokereal Autocatch"
+
 
 bot = commands.Bot(command_prefix="?", description=description, self_bot=True)
 # ----- CONFIG -----
@@ -112,7 +119,7 @@ def identify_pokemon(embedding):
     return melhor_pokemon, melhor_score, ranking_str
 
 
-ranking = True
+ranking = False
 
 
 @bot.event
@@ -143,6 +150,8 @@ async def on_message(message: discord.Message):
                         if ranking:
                             await asyncio.sleep(1)
                             await message.reply(ranking_str)
+                        else:
+
 
 
 from config import token
