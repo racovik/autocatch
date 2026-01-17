@@ -27,7 +27,7 @@ EMBEDDINGS_PATH = "models/pokerealmac_v1.0.pt"  # model
 DEVICE = (
     "cuda" if torch.cuda.is_available() else "cpu"
 )  # ou "cuda"/"rocm" se estiver usando GPU
-logging.info(f"Device: {DEVICE}")
+logging.info(f"Torch device: {DEVICE}")
 if DEVICE == "cuda":
     logging.info(f"Cuda Device: {torch.cuda.current_device()}")
 
@@ -52,6 +52,7 @@ model.to(DEVICE)
 
 # ----- LOAD DOS EMBEDDINGS -----
 base_embeddings = torch.load(EMBEDDINGS_PATH, map_location=DEVICE, weights_only=False)
+logging.info(f"Embeddings model loaded (Path: {EMBEDDINGS_PATH})")
 
 
 # white backgroud pois no preto a IA poderia confundir as bordas dos pokemons com o fundo preto.
@@ -80,7 +81,7 @@ def get_embedding_from_url(url):
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    logging.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     print("------")
 
 
