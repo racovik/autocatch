@@ -11,6 +11,8 @@ from discord.ext import commands
 from PIL import Image
 from torchvision import models, transforms
 
+from config import guild_id
+
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
 )
@@ -126,7 +128,7 @@ ranking = False
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.id == 665301904791699476:
-        if message.channel.guild.id == 812473010241667122:
+        if message.channel.guild.id == guild_id:
             if message.embeds:
                 embed = message.embeds[0]
                 if embed.title and "A wild pokémon has аppeаred!" in embed.title:
