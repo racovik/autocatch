@@ -1,0 +1,2 @@
+httpx
+discord.py-self
