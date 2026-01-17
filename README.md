@@ -20,9 +20,9 @@ guild_id =
 ```
 # download model
 ```
-wget -o models/pokerealmac_v1.0.pt https://github.com/racovik/autocatch/releases/download/v1.0.0/pokerealmac_v1.0.pt
+mkdir -p models && curl -L -o models/pokerealmac_v1.0.pt https://github.com/racovik/autocatch/releases/download/v1.0.0/pokerealmac_v1.0.pt
 ```
 # run
 ```
-python main.py
+python discord_bot.py
 ```
