@@ -18,7 +18,7 @@ logging.basicConfig(
 )
 
 
-description = "Pokereal Autocatch"
+description = "Autocatch"
 
 
 bot = commands.Bot(command_prefix="?", description=description, self_bot=True)
