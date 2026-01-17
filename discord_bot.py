@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 from io import BytesIO
 
@@ -9,8 +10,6 @@ import torch.nn.functional as F
 from discord.ext import commands
 from PIL import Image
 from torchvision import models, transforms
-import logging
-
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
@@ -26,9 +25,10 @@ EMBEDDINGS_PATH = "models/pokerealmac_v1.0.pt"  # model
 DEVICE = (
     "cuda" if torch.cuda.is_available() else "cpu"
 )  # ou "cuda"/"rocm" se estiver usando GPU
+logging.info(f"Device: {DEVICE}")
 if DEVICE == "cuda":
-    print("running on cuda:")
-    print(torch.cuda.current_device())
+    logging.info(f"Cuda Device: {torch.cuda.current_device()}")
+
 IMAGE_SIZE = 224
 
 # ISSO TEM Q SER IGUAL AO DO TREINAMENTO, ENT N MUDAR
@@ -61,6 +61,7 @@ def process_with_white_background(image: bytes):
 
 
 def get_embedding_from_url(url):
+    logging.debug(f"Getting image embedding from {url}")
     response = httpx.get(url, timeout=10)
     response.raise_for_status()
     img = process_with_white_background(response.content)
@@ -125,14 +126,12 @@ ranking = False
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.id == 665301904791699476:
-        if message.channel.id == 1422970015183011900:
+        if message.channel.guild.id == 812473010241667122:
             if message.embeds:
                 embed = message.embeds[0]
-                print(embed)
-                if "A wild pokémon has аppeаred!" in embed.title:
+                if embed.title and "A wild pokémon has аppeаred!" in embed.title:
                     async with message.channel.typing():
                         image_url = embed.image.url
-                        print(image_url)
                         melhor_pokemon = None
                         melhor_score = -1
                         await asyncio.sleep(1)
@@ -147,11 +146,11 @@ async def on_message(message: discord.Message):
                         await message.channel.send(
                             f"<@665301904791699476> c {melhor_pokemon}"
                         )
+                        logging.info(f"Identified pokemon: {melhor_pokemon}")
+                        logging.info(f"Ranking: {ranking_str}")
                         if ranking:
                             await asyncio.sleep(1)
                             await message.reply(ranking_str)
-                        else:
-
 
 
 from config import token
