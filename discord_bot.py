@@ -136,7 +136,8 @@ async def on_message(message: discord.Message):
                         image_url = embed.image.url
                         melhor_pokemon = None
                         melhor_score = -1
-                        await asyncio.sleep(1)
+                        sleep_time = random.randint(1, 5)
+                        await asyncio.sleep(sleep_time)
                         embed_image_emb = await asyncio.to_thread(
                             get_embedding_from_url, image_url
                         )
