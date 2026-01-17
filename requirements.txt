@@ -1,2 +1,7 @@
+# ja baixados pelo pkg
+#torch
+#torchvision
+
+
 httpx
 discord.py-self
