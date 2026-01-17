@@ -126,7 +126,7 @@ ranking = False
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.id == 665301904791699476:
-        if message.channel.id == 1422970015183011900:
+        if message.channel.guild.id == 812473010241667122:
             if message.embeds:
                 embed = message.embeds[0]
                 if embed.title and "A wild pokémon has аppeаred!" in embed.title:

@@ -12,4 +12,17 @@ dependencies = [
     "torch",
     "torchaudio",
     "torchvision",
+    "transformers>=4.57.5",
+    "pytorch-triton-rocm"
 ]
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm6.2"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-rocm" }]
+torchvision = [{ index = "pytorch-rocm" }]
+torchaudio = [{ index = "pytorch-rocm" }]
+pytorch-triton-rocm = [{ index = "pytorch-rocm" }]

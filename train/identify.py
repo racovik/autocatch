@@ -1,3 +1,4 @@
+import logging
 import os
 
 import numpy as np
@@ -6,9 +7,11 @@ import torch.nn.functional as F
 from PIL import Image
 from torchvision import models, transforms
 
+logging.basicConfig(level=logging.INFO)
+
 # ----- CONFIG -----
-EMBEDDINGS_PATH = "models/pokedex_embeddings-w-pokeapi-w-inverted-w-smaller-w-inverted-w-smallup-oginv-white-background.pt"
-IMAGE_TESTE = "test/pokemon.jpg"  # imagem que você quer identificar
+EMBEDDINGS_PATH = "models/pokerealmac_v1.0.pt"
+IMAGE_TESTE = "test/aegislash.png"  # imagem que você quer identificar
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"  # cuda ou CPU.
 IMAGE_SIZE = 224
 
