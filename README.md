@@ -1,3 +1,4 @@
+# termux setup
 ```
 pkg install python-torch python-torchvision
 ```
@@ -10,7 +11,7 @@ cd autocatch
 ```
 pip install -r requirements.txt
 ```
-# configs
+## configs
 ```
 nano config.py
 ```
@@ -18,11 +19,11 @@ nano config.py
 token =
 guild_id = 
 ```
-# download model
+## download model
 ```
 mkdir -p models && curl -L -o models/pokerealmac_v1.0.pt https://github.com/racovik/autocatch/releases/download/v1.0.0/pokerealmac_v1.0.pt
 ```
-# run
+## run
 ```
 python discord_bot.py
 ```
