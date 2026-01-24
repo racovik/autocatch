@@ -19,8 +19,8 @@ pip install -r requirements.txt
 nano config.py
 ```
 ```
-token =
-guild_id = 
+token: str = ""
+guild_id: int = 
 ```
 ### download model
 ```
@@ -37,7 +37,7 @@ python discord_bot.py
 winget install Git.Git
 ```
 ### Install python on Microsoft Store
-### Install torch 
+### Install torch and requirements
 <details>
 <summary>if you have an Nvidia card</summary>
 
@@ -79,8 +79,8 @@ mkdir -p models && curl -L -o models/pokerealmac_v1.0.pt https://github.com/raco
 
 ### create config.py
 ```
-token = "" 
-guild_id = 
+token: str = "" 
+guild_id: int = 
 ```
 ### run
 ```
