@@ -64,6 +64,7 @@ pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu13
 </pre>
 
 </details>
+
 ```
 pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 ```
