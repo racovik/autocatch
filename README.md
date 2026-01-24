@@ -72,3 +72,17 @@ pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 ```
 pip3 install -r requirements.txt
 ```
+### download model
+```
+mkdir -p models && curl -L -o models/pokerealmac_v1.0.pt https://github.com/racovik/autocatch/releases/download/v1.0.0/classifier.pt
+```
+
+### create config.py
+```
+token = "" 
+guild_id = 
+```
+### run
+```
+python discord_bot.py
+```
