@@ -1,7 +1,7 @@
 import logging
 import os
 
-import numpy as np
+# import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -48,7 +48,7 @@ transform = transforms.Compose(
         transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
         transforms.ToTensor(),
         # Normalização padrão do ImageNet (Média e Desvio Padrão)
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ]
 )
 # =============================
