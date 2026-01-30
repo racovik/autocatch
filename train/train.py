@@ -8,6 +8,10 @@ import torch.nn.functional as F
 from PIL import Image
 from torchvision import models, transforms
 
+# Barra de progresso
+from tqdm import tqdm
+
+
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
 )
@@ -70,7 +74,7 @@ def process_with_white_background(image_path):
 
 
 def get_embedding(image_path):
-    img = process_with_white_background(image_path)
+    img = process_with_white_background(image_path).convert("L").convert("RGB")
     # img = Image.open(image_path).convert("RGB")
     img = transform(img).unsqueeze(0).to(device)
 
@@ -88,7 +92,7 @@ def get_embedding(image_path):
 logging.info("Creating base embeddings...")
 base_embeddings = {}
 
-for pokemon in os.listdir(BASE_DIR):
+for pokemon in tqdm(os.listdir(BASE_DIR), desc="Processing Pokémon"):
     pokemon_dir = os.path.join(BASE_DIR, pokemon)
     if not os.path.isdir(pokemon_dir):
         continue
