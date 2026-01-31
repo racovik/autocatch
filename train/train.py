@@ -1,7 +1,8 @@
 import logging
 import os
 
-# import numpy as np
+import PIL
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -48,7 +49,7 @@ transform = transforms.Compose(
         transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
         transforms.ToTensor(),
         # Normalização padrão do ImageNet (Média e Desvio Padrão)
-        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ]
 )
 # =============================
@@ -66,7 +67,7 @@ model.to(device)
 # Função para gerar embedding
 # =============================
 # Fundo branco pois o bot pode bugar se ficar processando com fundo branco
-def process_with_white_background(image_path):
+def process_with_white_background(image_path) -> Image.Image:
     img_rgba = Image.open(image_path).convert("RGBA")
     fundo_branco = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
     img_final = Image.alpha_composite(fundo_branco, img_rgba)
@@ -84,6 +85,31 @@ def get_embedding(image_path):
     emb = emb.squeeze()  # removing cpu
     emb = emb / torch.norm(emb)  # normalização
     return emb
+
+
+def load_image(image_path):
+    img = process_with_white_background(image_path)
+    img = transform(img)
+    return img
+
+
+# carregar varias imagens ao mesmo tempo. ver se usa um pouco mais de gpu e vai mais rapido
+def get_embeddings_batch(image_paths, batch_size=32):
+    embeddings = []
+    for i in range(0, len(image_paths), batch_size):
+        batch_paths = image_paths[i : i + batch_size]
+        imgs = [load_image(p) for p in batch_paths]
+        batch = torch.stack(imgs).to(device)
+
+        with torch.no_grad():
+            embs = model(batch)
+
+        embs = F.normalize(
+            embs, dim=1
+        )  # F. normalize melhor doq torch.norm pois ja faz o processo completo para virar embs
+        embeddings.append(embs.cpu())  # .cpu para tirar as imagens da gpu
+
+    return torch.cat(embeddings, dim=0)
 
 
 # =============================
@@ -105,15 +131,18 @@ for pokemon in tqdm(os.listdir(BASE_DIR), desc="Processing Pokémon"):
     if len(images) == 0:
         continue
 
-    all_embs = []
-    for img_name in images:
-        img_path = os.path.join(pokemon_dir, img_name)
-        all_embs.append(get_embedding(img_path))
+    img_paths = [os.path.join(pokemon_dir, f) for f in images]
 
+    # all_embs = []
+    # for img_name in images:
+    # img_path = os.path.join(pokemon_dir, img_name)
+    # all_embs.append(get_embedding(img_path))
+    embs = get_embeddings_batch(img_paths)
     # Faz a média de todos os vetores daquele pokemon
-    avg_emb = torch.stack(all_embs).mean(dim=0)
+    avg_emb = embs.mean(dim=0)
+    # avg_emb = torch.stack(all_embs).mean(dim=0)
     # Normaliza a média para manter o vetor unitário
-    avg_emb = avg_emb / torch.norm(avg_emb)
+    avg_emb = F.normalize(avg_emb, dim=0)
 
     base_embeddings[pokemon] = avg_emb
 
@@ -144,7 +173,7 @@ print(f"[OK] {len(base_embeddings)} Pokémon carregados.")
 # Identificação por similaridade
 # =============================
 def identify_pokemon(image_path):
-    test_emb = get_embedding(image_path)
+    test_emb = get_embedding(image_path).cpu()
 
     best_pokemon = None
     best_score = -1.0

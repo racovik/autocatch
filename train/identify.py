@@ -78,9 +78,8 @@ def get_embedding(image_path):
         emb = model(img)
 
     emb = emb.squeeze()  # removing .cpu()
-    emb = emb / torch.norm(
-        emb
-    )  # normalização np.linalg.norm --> torch.norm para desempenho em GPU
+    emb = F.normalize(emb, dim=0)
+    # emb = emb / torch.norm(emb)  # normalização np.linalg.norm --> torch.norm para desempenho em GPU
     return emb
 
 
