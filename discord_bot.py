@@ -23,7 +23,7 @@ description = "Autocatch"
 
 bot = commands.Bot(command_prefix="?", description=description, self_bot=True)
 # ----- CONFIG -----
-EMBEDDINGS_PATH = "models/pokerealmac_v1.0.pt"  # model
+EMBEDDINGS_PATH = "models/classifier.pt"  # model
 DEVICE = (
     "cuda" if torch.cuda.is_available() else "cpu"
 )  # ou "cuda"/"rocm" se estiver usando GPU
