@@ -74,7 +74,7 @@ def process_with_white_background(image_path):
 
 
 def get_embedding(image_path):
-    img = process_with_white_background(image_path).convert("L").convert("RGB")
+    img = process_with_white_background(image_path)
     # img = Image.open(image_path).convert("RGB")
     img = transform(img).unsqueeze(0).to(device)
 
