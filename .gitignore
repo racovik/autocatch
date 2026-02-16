@@ -12,6 +12,10 @@ config.py
 discordtoken.txt
 
 # Untracked files
-pokedex_embeddings-wnumpy.pt
-pokedex_embeddings.pt
 dataset/
+*.pt
+test/
+.env
+
+*.toml
+uv.lock
