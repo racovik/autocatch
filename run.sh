@@ -1,5 +1,7 @@
 #!/bin/bash
 
+VERSION="1.1.0"
+
 if [ -f "requirements.txt" ]; then
     OLD_HASH=$(md5sum requirements.txt)
 else
@@ -10,7 +12,10 @@ git config pull.rebase true
 echo "--- Atualizando... ---"
 git pull --rebase --autostash
 
-
+if [ ! -f "models/classifier.pt" ]; then
+  echo "--- Baixando Modelo ---"
+  curl -L -o models/classifier.pt https://github.com/racovik/autocatch/releases/download/${VERSION}/classifier.pt
+fi
 
 if [ -f "venv/bin/activate" ]; then
 
