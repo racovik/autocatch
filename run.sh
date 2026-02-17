@@ -28,6 +28,7 @@ else
   python -m venv --system-site-packages venv
   source venv/bin/activate
   pip install -r requirements.txt
+fi
 
 echo "--- Iniciando o Bot ---"
 python discord_bot.py
