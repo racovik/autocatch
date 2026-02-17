@@ -2,6 +2,8 @@ import asyncio
 import logging
 import random
 from io import BytesIO
+import os
+
 
 import discord
 import httpx
@@ -23,7 +25,9 @@ description = "Autocatch"
 
 bot = commands.Bot(command_prefix="?", description=description, self_bot=True)
 # ----- CONFIG -----
-EMBEDDINGS_PATH = "models/classifier.pt"  # model
+EMBEDDINGS_PATH = "models/classifier.pt" # model
+assert os.path.exists(EMBEDDINGS_PATH), f"{EMBEDDINGS_PATH} not found. please download model"
+
 DEVICE = (
     "cuda" if torch.cuda.is_available() else "cpu"
 )  # ou "cuda"/"rocm" se estiver usando GPU
