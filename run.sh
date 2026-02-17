@@ -24,6 +24,9 @@ else
   if [ "$OLD_HASH" != "$NEW_HASH" ]; then
     echo "--- Atualizando Requirements ---"
     pip install -r requirements.txt
+  else
+    echo "--- Requirements is already update ---"
+  fi
 fi
 
 echo "--- Iniciando o Bot ---"
