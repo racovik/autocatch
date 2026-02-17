@@ -4,4 +4,4 @@
 
 
 httpx
-discord.py-self
+discord.py-self==2.0.0
