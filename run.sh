@@ -32,7 +32,10 @@ else
 fi
 
 # fix discord.py-self 2.0.0 bug
-sed -i "s/data.get('pending_payments', \[\])/data.get('pending_payments') or \[\]/g" /data/data/com.termux/files/home/autocatch/venv/lib/python3.12/site-packages/discord/state.py
-
+if grep -q "pending_payments', \[\]" venv/lib/python3.*/site-packages/discord/state.py 2>/dev/null; then
+    echo "fixing discord.py-self..."
+    sed -i "s/data.get('pending_payments', \[\])/data.get('pending_payments') or \[\]/g" \
+        venv/lib/python3.*/site-packages/discord/state.py
+fi
 echo "--- Iniciando o Bot ---"
 python discord_bot.py
