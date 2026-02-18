@@ -38,7 +38,7 @@ fi
 
 # fix discord.py-self 2.0.0 bug
 if grep -q "pending_payments', \[\]" venv/lib/python3.*/site-packages/discord/state.py 2>/dev/null; then
-    echo "fixing discord.py-self..."
+    echo "--- fixing discord.py-self... ---"
     sed -i "s/data.get('pending_payments', \[\])/data.get('pending_payments') or \[\]/g" \
         venv/lib/python3.*/site-packages/discord/state.py
 fi
