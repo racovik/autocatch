@@ -3,7 +3,8 @@ import logging
 import random
 from io import BytesIO
 import os
-
+import re
+import json
 
 import discord
 import httpx
@@ -127,6 +128,16 @@ def identify_pokemon(embedding):
     return melhor_pokemon, melhor_score, ranking_str
 
 
+def save_message_log(data: dict):
+    os.makedirs("logs", exist_ok=True)
+    message_id = data["message_id"]
+    with open(f"logs/{message_id}.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+def format_pokemon_name(pk) -> str:
+    """remover informacoes da pasta. ex 'minior [core]' -> 'minior'"""
+    return re.sub(r"(\[.*?\])", "", pk).strip()
+
 ranking = False
 
 
@@ -151,11 +162,19 @@ async def on_message(message: discord.Message):
                             melhor_score,
                             ranking_str,
                         ) = await asyncio.to_thread(identify_pokemon, embed_image_emb)
+                        pokemon = format_pokemon_name(melhor_pokemon)
                         await message.channel.send(
-                            f"<@665301904791699476> c {melhor_pokemon}"
+                            f"<@665301904791699476> c {pokemon}"
                         )
+
                         logging.info(f"Identified pokemon: {melhor_pokemon}")
-                        logging.info(f"Ranking: {ranking_str}")
+                        data = {
+                            "message_id": message.id,
+                            "best_score": melhor_score,
+                            "best_match": melhor_pokemon,
+                            "ranking_str": ranking_str
+                        }
+                        save_message_log(data)
                         if ranking:
                             await asyncio.sleep(1)
                             await message.reply(ranking_str)
