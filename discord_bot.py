@@ -34,6 +34,7 @@ class Autocatcher(commands.Bot):
         is_sending_rank,
         pokemon_bot_support,
         is_realm_disabled,
+        catch_delay=3,
     ) -> None:
         super().__init__(command_prefix="?", description=description, self_bot=True)
 
@@ -64,6 +65,8 @@ class Autocatcher(commands.Bot):
         self.queue = asyncio.Queue()
         self.pokemon_bot_support = pokemon_bot_support
         self.is_realm_disabled = is_realm_disabled
+        # delay depois de processar a imagem
+        self.catch_delay = catch_delay
 
     async def setup_hook(self) -> None:
         self.loop.create_task(self.process_queue())
@@ -92,6 +95,9 @@ class Autocatcher(commands.Bot):
                     )
 
                     pokemon = format_pokemon_name(nome)
+                    await asyncio.sleep(
+                        self.catch_delay + random.uniform(0.2, 1)
+                    )  # delay aleatório
                     await message.channel.send(f"{command} {pokemon}")
 
             except Exception as e:
@@ -123,7 +129,7 @@ class Autocatcher(commands.Bot):
                             message.author.id == 669228505128501258
                             and self.pokemon_bot_support
                         ):
-                            command = ".catch"
+                            command = "<@669228505128501258> c"
                             await self.queue.put((message, image_url, command))
 
     async def close(self):
@@ -244,6 +250,13 @@ def get_args():
     argument_parser.add_argument(
         "--dr--deactive-pokerealm", action="store_true", dest="is_realm_disabled"
     )
+    argument_parser.add_argument(
+        "-d",
+        "--delay",
+        type=int,
+        default=3,
+        dest="delay",
+    )
     argument_parser.add_argument("-r", "--ranking", action="store_true")
     return argument_parser.parse_args()
 
@@ -259,5 +272,6 @@ if __name__ == "__main__":
         target_guild_id=guild_id,
         pokemon_bot_support=args.is_pokemon_bot_supported,
         is_realm_disabled=args.is_realm_disabled,
+        catch_delay=args.delay,
     )
     bot.run(token)
