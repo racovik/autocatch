@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 import discord
-import httpx
+import aiohttp
 import torch
 import torch.nn.functional as F
 from discord.ext import commands
@@ -44,6 +44,13 @@ class Autocatcher(commands.Bot):
         self.model, self.base_embeddings = load_model(
             self.model_device, self.EMBEDDINGS_PATH
         )
+        items = list(self.base_embeddings.items())
+        self.names = [k for k, _ in items]
+        self.names = list(self.base_embeddings.keys())
+        self.base_tensor = torch.stack(list(self.base_embeddings.values())).to(
+            self.model_device
+        )  # shape: [N, D]
+        self.base_tensor = F.normalize(self.base_tensor, dim=1)
         self.transform = transforms.Compose(
             [
                 transforms.Resize((224, 224)),
@@ -61,14 +68,17 @@ class Autocatcher(commands.Bot):
         self.is_sending_rank = is_sending_rank
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.target_guild_id = target_guild_id
-        self.http_client = httpx.Client()
         self.queue = asyncio.Queue()
         self.pokemon_bot_support = pokemon_bot_support
         self.is_realm_disabled = is_realm_disabled
         # delay depois de processar a imagem
         self.catch_delay = catch_delay
 
+        self.session: aiohttp.ClientSession | None = None
+
     async def setup_hook(self) -> None:
+        self.session = aiohttp.ClientSession()
+        assert self.session is not None
         self.loop.create_task(self.process_queue())
 
     async def process_queue(self):
@@ -79,21 +89,13 @@ class Autocatcher(commands.Bot):
             message, image_url, command = item
 
             try:
+                img_b = await self.get_img(image_url)
                 async with message.channel.typing():
-                    emb = await self.loop.run_in_executor(
+                    nome, _ = await self.loop.run_in_executor(
                         self.executor,
-                        get_embedding_from_url,
-                        image_url,
-                        self.http_client,
-                        self.model,
-                        self.transform,
-                        self.model_device,
+                        self.identify_pokemon,
+                        img_b,
                     )
-
-                    nome, score, rank = await self.loop.run_in_executor(
-                        self.executor, identify_pokemon, emb, self.base_embeddings
-                    )
-
                     pokemon = format_pokemon_name(nome)
                     await asyncio.sleep(
                         self.catch_delay + random.uniform(0.2, 1)
@@ -104,6 +106,44 @@ class Autocatcher(commands.Bot):
                 logging.error(f"Erro no worker: {e}")
             finally:
                 self.queue.task_done()
+
+    async def get_img(self, url) -> bytes:
+        assert self.session is not None
+        async with self.session.get(url) as response:
+            response.raise_for_status()
+            img_bytes = await response.read()
+            return img_bytes
+
+    # run in thread
+    def identify_pokemon(self, img_bytes: bytes):
+        embedding = self._get_embedding_from_bytes(img_bytes)
+        embedding = embedding.unsqueeze(0)
+
+        # similaridade com todos → [N]
+        scores = F.cosine_similarity(embedding, self.base_tensor, dim=1)
+
+        # pega só o melhor índice (mais rápido que topk)
+        best_idx = int(torch.argmax(scores).item())
+
+        melhor_pokemon = self.names[best_idx]
+        melhor_score = scores[best_idx].item()
+
+        return melhor_pokemon, melhor_score
+
+    def _get_embedding_from_bytes(
+        self,
+        img_bytes: bytes,
+    ):
+        img = process_with_white_background(img_bytes)
+        # img = Image.open(BytesIO(response.content)).convert("RGB")
+        img = self.transform(img).unsqueeze(0)  # type: ignore
+
+        with torch.no_grad():
+            emb = self.model(img)
+
+        emb = emb.squeeze()
+        emb = F.normalize(emb, dim=0)
+        return emb
 
     async def on_ready(self):
         logging.info(f"Logged in as {bot.user} (ID: {bot.user.id})")  # type: ignore
@@ -134,7 +174,8 @@ class Autocatcher(commands.Bot):
 
     async def close(self):
         await super().close()
-        self.http_client.close()
+        if self.session is not None:
+            await self.session.close()
         self.executor.shutdown()
 
 
@@ -163,28 +204,6 @@ def process_with_white_background(image: bytes) -> Image.Image:
     return img_final.convert("RGB")
 
 
-def get_embedding_from_url(
-    url: str,
-    http_client: httpx.Client,
-    model: torch.nn.Module,
-    transform: Callable[[Image.Image], torch.Tensor],
-    torch_device: str,
-):
-    logging.debug(f"Getting image embedding from {url}")
-    response = http_client.get(url, timeout=10)
-    response.raise_for_status()
-    img = process_with_white_background(response.content)
-    # img = Image.open(BytesIO(response.content)).convert("RGB")
-    img = transform(img).unsqueeze(0).to(torch_device)
-
-    with torch.no_grad():
-        emb = model(img)
-
-    emb = emb.squeeze()
-    emb = emb / torch.norm(emb)  # normalização
-    return emb
-
-
 # identify pokemon padrãozinho
 # def identify_pokemon(embedding):
 #     melhor_pokemon = None
@@ -197,30 +216,6 @@ def get_embedding_from_url(
 #             melhor_pokemon = nome
 
 #     return melhor_pokemon, melhor_score
-
-
-def identify_pokemon(embedding, base_embeddings):
-    resultados = []
-
-    # 1. Calcula o score para TODOS da base
-    for nome, emb in base_embeddings.items():
-        score = F.cosine_similarity(embedding, emb, dim=0).item()
-        resultados.append({"nome": nome, "score": score})
-
-    # 2. Ordena do maior score para o menor
-    # (O melhor será o índice 0)
-    resultados.sort(key=lambda x: x["score"], reverse=True)
-
-    # 3. Pega o melhor para o retorno padrão
-    melhor_pokemon = resultados[0]["nome"]
-    melhor_score = resultados[0]["score"]
-
-    # 4. Cria a string com o ranking dos outros (Top 5, por exemplo)
-    ranking_str = "\n--- Ranking de Similaridade ---\n"
-    for i, res in enumerate(resultados[:5], 1):  # Pega os 5 primeiros
-        ranking_str += f"{i}º. {res['nome']}: {res['score']:.4f}\n"
-
-    return melhor_pokemon, melhor_score, ranking_str
 
 
 def save_message_log(data: dict):
