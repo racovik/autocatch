@@ -1,22 +1,21 @@
-import asyncio
-import logging
-import random
-from io import BytesIO
-import os
-import re
-import json
 import argparse
+import asyncio
+import json
+import logging
+import os
+import random
+import re
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable
+from io import BytesIO
 
-import discord
 import aiohttp
+import discord
 import torch
 import torch.nn.functional as F
 from discord.ext import commands
 from PIL import Image
+from torch.types import FileLike
 from torchvision import models, transforms
-
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
@@ -26,55 +25,82 @@ logging.basicConfig(
 description = "Autocatch"
 
 
+class PokemonModel:
+    def __init__(self, checkpoint_model_path: FileLike):
+        self.MODEL_PATH = checkpoint_model_path
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logging.info(f'(model: {self.MODEL_PATH}) running on "{self.device}"')
+        self.model, self.class_mapping = self.load_model()
+        self.transform = transforms.Compose(
+            [
+                # transforms.Lambda(lambda img: process_with_white_background(img)), # only if img: bytes
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
+
+    def load_model(self) -> tuple[models.MobileNetV2, list[str]]:
+        checkpoint = torch.load(self.MODEL_PATH, map_location=self.device)
+        model = models.mobilenet_v2(weights=None)
+        num_ftrs = model.classifier[1].in_features
+        model.classifier[1] = torch.nn.Linear(
+            num_ftrs,  # type: ignore
+            len(checkpoint["classes"]),
+        )
+        model.load_state_dict(checkpoint["model_state_dict"])
+        model.to(self.device)
+        class_mapping = checkpoint["classes"]
+        model.eval()
+        return model, class_mapping
+
+    def process_with_white_background(self, image: Image.Image) -> Image.Image:
+        img_rgba = image.convert("RGBA")
+        white_back = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
+        img_final = Image.alpha_composite(white_back, img_rgba)
+        return img_final.convert("RGB")
+
+    def predict(self, img: Image.Image | bytes) -> str:
+        if isinstance(img, bytes):
+            img = Image.open(BytesIO(img))
+        # importante o white background
+        img = self.process_with_white_background(img)
+
+        batch = self.transform(img).unsqueeze(0).to(self.device)  # type: ignore
+        with torch.no_grad():
+            outputs = self.model(batch)
+            # probabilities = torch.nn.functional.softmax(outputs, dim=1)
+            _, preds = torch.max(outputs, 1)
+            predicted_class_idx = int(preds.item())
+            predicted_class = self.class_mapping[predicted_class_idx]
+            # percentage = conf.item() * 100
+        return predicted_class
+
+
 class Autocatcher(commands.Bot):
     def __init__(
         self,
-        emb_model_path,
+        model_path,
         target_guild_id,
-        is_sending_rank,
         pokemon_bot_support,
         is_realm_disabled,
         catch_delay=3,
     ) -> None:
         super().__init__(command_prefix="?", description=description, self_bot=True)
 
-        # configs do model
-        self.EMBEDDINGS_PATH = emb_model_path
-        self.model_device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model, self.base_embeddings = load_model(
-            self.model_device, self.EMBEDDINGS_PATH
-        )
-        items = list(self.base_embeddings.items())
-        self.names = [k for k, _ in items]
-        self.names = list(self.base_embeddings.keys())
-        self.base_tensor = torch.stack(list(self.base_embeddings.values())).to(
-            self.model_device
-        )  # shape: [N, D]
-        self.base_tensor = F.normalize(self.base_tensor, dim=1)
-        self.transform = transforms.Compose(
-            [
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
-            ]
-        )
-
-        assert os.path.exists(self.EMBEDDINGS_PATH), (
-            f"{self.EMBEDDINGS_PATH} not found in files."
-        )
-
-        self.is_sending_rank = is_sending_rank
+        assert os.path.exists(model_path)
+        self.model = PokemonModel(model_path)
         self.executor = ThreadPoolExecutor(max_workers=2)
-        self.target_guild_id = target_guild_id
         self.queue = asyncio.Queue()
+        self.session: aiohttp.ClientSession | None = None
+
+        # verificacoes das flags --ap --dr
         self.pokemon_bot_support = pokemon_bot_support
         self.is_realm_disabled = is_realm_disabled
-        # delay depois de processar a imagem
-        self.catch_delay = catch_delay
 
-        self.session: aiohttp.ClientSession | None = None
+        self.target_guild_id = target_guild_id
+        # catch delay mas sempre adicionado 0.2~1 de delay a mais, ou seja, 0 não é 0
+        self.catch_delay = catch_delay
 
     async def setup_hook(self) -> None:
         self.session = aiohttp.ClientSession()
@@ -91,9 +117,9 @@ class Autocatcher(commands.Bot):
             try:
                 img_b = await self.get_img(image_url)
                 async with message.channel.typing():
-                    nome, _ = await self.loop.run_in_executor(
+                    nome = await self.loop.run_in_executor(
                         self.executor,
-                        self.identify_pokemon,
+                        self.model.predict,
                         img_b,
                     )
                     pokemon = format_pokemon_name(nome)
@@ -113,37 +139,6 @@ class Autocatcher(commands.Bot):
             response.raise_for_status()
             img_bytes = await response.read()
             return img_bytes
-
-    # run in thread
-    def identify_pokemon(self, img_bytes: bytes):
-        embedding = self._get_embedding_from_bytes(img_bytes)
-        embedding = embedding.unsqueeze(0)
-
-        # similaridade com todos → [N]
-        scores = F.cosine_similarity(embedding, self.base_tensor, dim=1)
-
-        # pega só o melhor índice (mais rápido que topk)
-        best_idx = int(torch.argmax(scores).item())
-
-        melhor_pokemon = self.names[best_idx]
-        melhor_score = scores[best_idx].item()
-
-        return melhor_pokemon, melhor_score
-
-    def _get_embedding_from_bytes(
-        self,
-        img_bytes: bytes,
-    ):
-        img = process_with_white_background(img_bytes)
-        # img = Image.open(BytesIO(response.content)).convert("RGB")
-        img = self.transform(img).unsqueeze(0)  # type: ignore
-
-        with torch.no_grad():
-            emb = self.model(img)
-
-        emb = emb.squeeze()
-        emb = F.normalize(emb, dim=0)
-        return emb
 
     async def on_ready(self):
         logging.info(f"Logged in as {bot.user} (ID: {bot.user.id})")  # type: ignore
@@ -179,50 +174,7 @@ class Autocatcher(commands.Bot):
         self.executor.shutdown()
 
 
-def load_model(
-    device,
-    emb_path,
-):
-    model = models.mobilenet_v2(
-        weights=models.MobileNet_V2_Weights.DEFAULT
-    )  # MobileNEt Modelo feito para uso no Mobile
-    model.classifier = torch.nn.Identity()  # type: ignore
-    model.eval()  # model.eval() feito para parar o treinamento do modelo, pelo q eu entendi
-    model.to(device)
-
-    # ----- LOAD DOS EMBEDDINGS -----
-    base_embeddings = torch.load(emb_path, map_location=device, weights_only=False)
-    logging.info(f"Embeddings model loaded (Path: {emb_path}) (Device: {device}")
-    return model, base_embeddings
-
-
-# white backgroud pois no preto a IA poderia confundir as bordas dos pokemons com o fundo preto.
-def process_with_white_background(image: bytes) -> Image.Image:
-    img_rgba = Image.open(BytesIO(image)).convert("RGBA")
-    fundo_branco = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
-    img_final = Image.alpha_composite(fundo_branco, img_rgba)
-    return img_final.convert("RGB")
-
-
-# identify pokemon padrãozinho
-# def identify_pokemon(embedding):
-#     melhor_pokemon = None
-#     melhor_score = -1
-
-#     for nome, emb in base_embeddings.items():
-#         score = F.cosine_similarity(embedding, emb, dim=0).item()
-#         if score > melhor_score:
-#             melhor_score = score
-#             melhor_pokemon = nome
-
-#     return melhor_pokemon, melhor_score
-
-
-def save_message_log(data: dict):
-    os.makedirs("logs", exist_ok=True)
-    message_id = data["message_id"]
-    with open(f"logs/{message_id}.json", "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+# white background como foi treinado
 
 
 def format_pokemon_name(pk) -> str:
@@ -237,7 +189,7 @@ def get_args():
         "--model-path",
         type=str,
         default="models/classifier.pt",
-        dest="emb_model_path",
+        dest="model_path",
     )
     argument_parser.add_argument(
         "--ap", "--active-pokemon", action="store_true", dest="is_pokemon_bot_supported"
@@ -257,13 +209,11 @@ def get_args():
 
 
 if __name__ == "__main__":
-    from config import token
-    from config import guild_id
+    from config import guild_id, token
 
     args = get_args()
     bot = Autocatcher(
-        emb_model_path=args.emb_model_path,
-        is_sending_rank=args.ranking,
+        model_path=args.model_path,
         target_guild_id=guild_id,
         pokemon_bot_support=args.is_pokemon_bot_supported,
         is_realm_disabled=args.is_realm_disabled,
