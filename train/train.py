@@ -1,169 +1,254 @@
-import logging
-import os
+import argparse
+import time
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.optim as optim
 from PIL import Image
-from torchvision import models, transforms
-
-# Barra de progresso
-from tqdm import tqdm
+from torch.types import FileLike
+from torchvision import datasets, models, transforms
 
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
-)
+# fodase os fundos, agora é tudo aleatório vai se fuder poketwo pokerealm pokemon pokehq
+def process_with_random_background(image) -> Image.Image:
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
 
-# =============================
-# Configurações
-# =============================
+    # random color
+    random_color = tuple(np.random.randint(0, 256, size=3))
 
-
-BASE_DIR = "dataset/base"
-TEST_IMAGE = "test/teste.png"
-IMAGE_SIZE = 224  # igual tambem no identify
-torch.backends.nnpack.enabled = False
-basedir = "models/"
-name = input("Digite o nome do modelo: ")
-if os.path.exists(f"{basedir}{name}.pt"):
-    print(f"Modelo {name} já existe!")
-    exit(1)
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-if device == "cuda":
-    logging.debug("running on cuda")
-    logging.debug(f"current device: {torch.cuda.current_device()}")
-else:
-    logging.info(
-        "CUDA not available, falling back to CPU | ou seja, usando a CPU para treinar, tlgd."
-    )
-
-# =============================
-# Transformações
-# =============================
-transform = transforms.Compose(
-    [
-        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-        transforms.ToTensor(),
-        # Normalização padrão do ImageNet (Média e Desvio Padrão)
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
-# =============================
-# Modelo (extrator de embeddings)
-# =============================
-model = models.mobilenet_v2(
-    weights=models.MobileNet_V2_Weights.DEFAULT
-)  # tem que ser igual no identify
-model.classifier = nn.Identity()  # remove a cabeça de classificação
-model.eval()
-model.to(device)
+    bg = Image.new("RGB", image.size, random_color)
+    bg.paste(image, (0, 0), image)
+    return bg.convert("RGB")
 
 
-# =============================
-# Função para gerar embedding
-# =============================
-# Fundo branco pois o bot pode bugar se ficar processando com fundo branco
-def process_with_white_background(image_path):
-    img_rgba = Image.open(image_path).convert("RGBA")
-    fundo_branco = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
-    img_final = Image.alpha_composite(fundo_branco, img_rgba)
+def process_with_white_background(img) -> Image.Image:
+    """
+    converter a imagem para fundo branco para melhorar a visualização do modelo, já q o fundo do bot é transparente.
+    """
+    img = img.convert("RGBA")
+    white_background = Image.new("RGBA", img.size, (255, 255, 255, 255))
+    img_final = Image.alpha_composite(white_background, img)
+
     return img_final.convert("RGB")
 
 
-def get_embedding(image_path):
-    img = process_with_white_background(image_path)
-    # img = Image.open(image_path).convert("RGB")
-    img = transform(img).unsqueeze(0).to(device)
+class Trainer:
+    def __init__(
+        self,
+        data_dir="./pokerealmdataset",
+        batch_size=32,
+        epochs=10,
+        lr=0.001,
+        data_loader_num_workers=0,
+    ):
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.lr = lr
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"running on cuda: {self.device}")
+        self.train_transform = transforms.Compose(
+            [
+                transforms.Lambda(process_with_random_background),
+                transforms.RandomResizedCrop(
+                    224, scale=(0.7, 1.0)
+                ),  # Aprende que o poke pode estar em qualquer lugar/tamanho
+                transforms.RandomHorizontalFlip(),  # Aprende que o poke pode estar virado
+                transforms.ColorJitter(
+                    brightness=0.2, contrast=0.2
+                ),  # Ignora pequenas mudanças de cor
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
+        self.train_dataset = datasets.ImageFolder(
+            self.data_dir, transform=self.train_transform
+        )
+        self.num_classes = len(self.train_dataset.classes)
+        self.train_loader = torch.utils.data.DataLoader(
+            dataset=self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=data_loader_num_workers,
+        )
+        self.model = self.load_model()
 
-    with torch.no_grad():
-        emb = model(img)
+    class TrainedModel:
+        def __init__(self, model_state_dict, classes):
+            self.model_state_dict = model_state_dict
+            self.classes = classes
 
-    emb = emb.squeeze()  # removing cpu
-    emb = emb / torch.norm(emb)  # normalização
-    return emb
+        def save(self, path):
+            torch.save(
+                {"model_state_dict": self.model_state_dict, "classes": self.classes},
+                path,
+            )
 
+    def load_model(self) -> models.MobileNetV2:
+        model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
 
-# =============================
-# Criar banco de embeddings
-# =============================
-logging.info("Creating base embeddings...")
-base_embeddings = {}
+        for param in model.parameters():
+            param.requires_grad = False
 
-for pokemon in tqdm(os.listdir(BASE_DIR), desc="Processing Pokémon"):
-    pokemon_dir = os.path.join(BASE_DIR, pokemon)
-    if not os.path.isdir(pokemon_dir):
-        continue
+        num_ftrs = model.classifier[1].in_features
+        model.classifier[1] = nn.Linear(num_ftrs, self.num_classes)  # type: ignore
+        model = model.to(self.device)
 
-    images = [
-        f
-        for f in os.listdir(pokemon_dir)
-        if f.lower().endswith((".png", ".jpg", ".jpeg"))
-    ]
-    if len(images) == 0:
-        continue
+        return model
 
-    all_embs = []
-    for img_name in images:
-        img_path = os.path.join(pokemon_dir, img_name)
-        all_embs.append(get_embedding(img_path))
+    def train(self) -> TrainedModel:
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(self.model.classifier[1].parameters(), lr=self.lr)
+        for epoch in range(self.epochs):
+            start_time = time.time()
+            self.model.train()
+            running_loss = 0.0
+            running_corrects = 0
 
-    # Faz a média de todos os vetores daquele pokemon
-    avg_emb = torch.stack(all_embs).mean(dim=0)
-    # Normaliza a média para manter o vetor unitário
-    avg_emb = avg_emb / torch.norm(avg_emb)
+            for inputs, labels in self.train_loader:
+                inputs, labels = inputs.to(self.device), labels.to(self.device)
 
-    base_embeddings[pokemon] = avg_emb
+                optimizer.zero_grad()
+                outputs = self.model(inputs)
+                _, preds = torch.max(outputs, 1)
+                loss = criterion(outputs, labels)
 
-# for pokemon in os.listdir(BASE_DIR):
-#     pokemon_dir = os.path.join(BASE_DIR, pokemon)
-#     if not os.path.isdir(pokemon_dir):
-#         continue
+                loss.backward()
+                optimizer.step()
 
-#     images = os.listdir(pokemon_dir)
-#     if len(images) == 0:
-#         continue
+                running_loss += loss.item() * inputs.size(0)
+                running_corrects += torch.sum(preds == labels.data)
 
-#     img_path = os.path.join(pokemon_dir, images[0])
-#     base_embeddings[pokemon] = get_embedding(img_path)
+            # Calculamos apenas sobre o set de treino
+            epoch_loss = running_loss / len(self.train_dataset)
+            epoch_acc = running_corrects.double() / len(self.train_dataset)  # type: ignore
+            duration = time.time() - start_time
 
-
-torch.save(
-    base_embeddings,
-    f"{basedir}{name}.pt",
-)
-
-logging.info(f"Base embeddings saved. on {basedir}{name}.pt")
-
-print(f"[OK] {len(base_embeddings)} Pokémon carregados.")
+            print(f"epoch {epoch + 1}/{self.epochs} | Time: {duration:.1f}s")
+            print(f"  [Trainer] Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}")
+            print("-" * 35)
+        return self.TrainedModel(self.model.state_dict(), self.train_dataset.classes)
 
 
-# =============================
-# Identificação por similaridade
-# =============================
-def identify_pokemon(image_path):
-    test_emb = get_embedding(image_path)
+class PokemonModel:
+    def __init__(self, checkpoint_model_path: FileLike):
+        self.MODEL_PATH = checkpoint_model_path
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"running on {self.device}")
+        self.model, self.class_mapping = self.load_model()
+        self.transform = transforms.Compose(
+            [
+                transforms.Lambda(lambda img: process_with_white_background(img)),
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
 
-    best_pokemon = None
-    best_score = -1.0
+    def load_model(self) -> tuple[models.MobileNetV2, list[str]]:
+        checkpoint = torch.load(self.MODEL_PATH, map_location=self.device)
+        model = models.mobilenet_v2(weights=None)
+        num_ftrs = model.classifier[1].in_features
+        model.classifier[1] = torch.nn.Linear(
+            num_ftrs,  # type: ignore
+            len(checkpoint["classes"]),
+        )
+        model.load_state_dict(checkpoint["model_state_dict"])
+        model.to(self.device)
+        class_mapping = checkpoint["classes"]
+        model.eval()
+        return model, class_mapping
 
-    for pokemon, emb in base_embeddings.items():
-        score = F.cosine_similarity(test_emb, emb, dim=0).item()  # cosine similarity
-        if score > best_score:
-            best_score = score
-            best_pokemon = pokemon
+    def predict(self, img: Image.Image) -> tuple[str, float]:
+        batch = self.transform(img).unsqueeze(0).to(self.device)  # type: ignore
+        with torch.no_grad():
+            outputs = self.model(batch)
+            probabilities = torch.nn.functional.softmax(outputs, dim=1)
+            conf, preds = torch.max(probabilities, 1)
+            predicted_class_idx = int(preds.item())
+            predicted_class = self.class_mapping[predicted_class_idx]
+            percentage = conf.item() * 100
+        return predicted_class, percentage
 
-    return best_pokemon, best_score
+
+def load_args():
+    argument_parser = argparse.ArgumentParser(description="entrenar el modelo")
+    argument_parser.add_argument(
+        "--data_dir",
+        type=str,
+        default="./pokerealmdataset",
+        help="directorio del dataset de entrenamiento",
+        dest="data_dir",
+    )
+    argument_parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=32,
+        help="tamaño del batch para entrenamiento",
+        dest="batch_size",
+    )
+    argument_parser.add_argument(
+        "--epochs",
+        type=int,
+        default=10,
+        help="número de épocas para entrenamiento",
+        dest="epochs",
+    )
+    argument_parser.add_argument(
+        "--lr",
+        type=float,
+        default=0.001,
+        help="tasa de aprendizaje para el optimizador",
+        dest="lr",
+    )
+    argument_parser.add_argument(
+        "-w",
+        "--num_workers",
+        type=int,
+        default=0,
+        help="número de workers para DataLoader",
+        dest="num_workers",
+    )
+    argument_parser.add_argument(
+        "--path",
+        type=str,
+        default="pokerealm_model.pth",
+        help="ruta para guardar el modelo entrenado",
+        dest="path",
+    )
+    argument_parser.add_argument(
+        "-i",
+        "--inference",
+        action="store_true",
+        help="modo de inferencia (no entrena)",
+        dest="inference",
+    )
+    argument_parser.add_argument(
+        "--im",
+        "--image",
+        type=str,
+        help="ruta de la imagen para inferencia",
+        dest="image",
+    )
+    return argument_parser.parse_args()
 
 
-# =============================
-# Teste
-# =============================
-pokemon, score = identify_pokemon(TEST_IMAGE)
+if __name__ == "__main__":
+    args = load_args()
+    if not args.inference:
+        print("loading trainer with the following parameters:")
+        print(
+            f"  data_dir: {args.data_dir}\n  batch_size: {args.batch_size}\n  epochs: {args.epochs}\n  lr: {args.lr}\n num_workers: {args.num_workers}\n  model_save_path: {args.path}"
+        )
 
-print("=================================")
-print(f"Pokémon identificado: {pokemon}")
-print(f"Score de similaridade: {score:.4f}")
-print("=================================")
+        trainer = Trainer(args.data_dir, args.batch_size, args.epochs, args.lr)
+        print("starting training...")
+        trained_model = trainer.train()
+        trained_model.save(args.path)
+    else:
+        print("loading inference model...")
+        pokemon_model = PokemonModel(args.path)
+        predicted_poke, percentage = pokemon_model.predict(Image.open(args.image))
+        print(f"predicted: {predicted_poke} with {percentage}% confidence")

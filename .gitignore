@@ -16,6 +16,7 @@ dataset/
 *.pt
 test/
 .env
+*.pth
 
 *.toml
 uv.lock
