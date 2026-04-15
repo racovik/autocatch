@@ -17,6 +17,7 @@ from discord.ext import commands
 from PIL import Image
 from torchvision import models, transforms
 
+torch.set_num_threads(1)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
@@ -66,7 +67,7 @@ class Autocatcher(commands.Bot):
         )
 
         self.is_sending_rank = is_sending_rank
-        self.executor = ThreadPoolExecutor(max_workers=2)
+        self.executor = ThreadPoolExecutor(max_workers=4)
         self.target_guild_id = target_guild_id
         self.queue = asyncio.Queue()
         self.pokemon_bot_support = pokemon_bot_support
@@ -97,9 +98,7 @@ class Autocatcher(commands.Bot):
                         img_b,
                     )
                     pokemon = format_pokemon_name(nome)
-                    await asyncio.sleep(
-                        self.catch_delay + random.uniform(0.2, 1)
-                    )  # delay aleatório
+                    await asyncio.sleep(self.catch_delay)  # delay aleatório
                     await message.channel.send(f"{command} {pokemon}")
 
             except Exception as e:
@@ -119,9 +118,10 @@ class Autocatcher(commands.Bot):
         embedding = self._get_embedding_from_bytes(img_bytes)
         embedding = embedding.unsqueeze(0)
 
-        # similaridade com todos → [N]
-        scores = F.cosine_similarity(embedding, self.base_tensor, dim=1)
-
+        scores = torch.matmul(
+            embedding, self.base_tensor.T
+        )  # eq a: "emb @ tensor" [N, D] -> [D, N] | [1, D] @ [D, N] = [1, N]
+        scores = scores.squeeze(0)  # [N]
         # pega só o melhor índice (mais rápido que topk)
         best_idx = int(torch.argmax(scores).item())
 
@@ -136,7 +136,7 @@ class Autocatcher(commands.Bot):
     ):
         img = process_with_white_background(img_bytes)
         # img = Image.open(BytesIO(response.content)).convert("RGB")
-        img = self.transform(img).unsqueeze(0)  # type: ignore
+        img = self.transform(img).unsqueeze(0).to(self.model_device)  # type: ignore
 
         with torch.no_grad():
             emb = self.model(img)
