@@ -7,7 +7,8 @@ import re
 import json
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable
+from typing import Any, Callable
+import traceback
 
 import discord
 import aiohttp
@@ -16,6 +17,8 @@ import torch.nn.functional as F
 from discord.ext import commands
 from PIL import Image
 from torchvision import models, transforms
+import time
+
 
 torch.set_num_threads(1)
 
@@ -25,6 +28,78 @@ logging.basicConfig(
 
 
 description = "Autocatch"
+
+
+class PokemonModel:
+    def __init__(self, emb_path: torch.types.FileLike):
+        assert os.path.exists(str(emb_path)), f"model not found in {str(emb_path)}"
+        self.model_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.transform = self._build_transform()
+        self.model, base_embeddings = self.load_model(emb_path=emb_path)
+        self.names = list(base_embeddings.keys())
+        self.base_tensor = torch.stack(list(base_embeddings.values())).to(
+            self.model_device
+        )  # shape: [N, D]
+
+    def _build_transform(self):
+        return transforms.Compose(
+            [
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+
+    def load_model(
+        self, emb_path: torch.types.FileLike
+    ) -> tuple[models.MobileNetV2, Any]:  # idk what base_embeddings returns
+        model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
+        model.classifier = torch.nn.Identity()  # type: ignore
+        model.eval()
+        model.to(self.model_device)
+        base_embeddings = torch.load(
+            emb_path, map_location=self.model_device, weights_only=False
+        )
+        logging.info(
+            f"Embeddings model loaded (Path: {emb_path}) (Device: {self.model_device})"
+        )
+        return model, base_embeddings
+
+    def _get_embedding_from_bytes(
+        self,
+        img_bytes: bytes,
+    ):
+        start = time.perf_counter()
+        img = process_with_white_background(img_bytes)
+        # img = Image.open(BytesIO(response.content)).convert("RGB")
+        img = self.transform(img).unsqueeze(0).to(self.model_device)  # type: ignore
+
+        with torch.no_grad():
+            emb = self.model(img)
+
+        emb = emb.squeeze()
+        emb = F.normalize(emb, dim=0)
+        end = time.perf_counter()
+        logging.info(f"model got embeddings at {(end - start) * 10**3:.0f}ms")
+        return emb
+
+    def predict(self, img_bytes: bytes):
+        embedding = self._get_embedding_from_bytes(img_bytes)
+        embedding = embedding.unsqueeze(0)
+
+        scores = torch.matmul(
+            embedding, self.base_tensor.T
+        )  # eq a: "emb @ tensor.T" [N, D] -> [D, N] | [1, D] @ [D, N] = [1, N]
+        scores = scores.squeeze(0)  # [N]
+        # pega só o melhor índice (mais rápido que topk)
+        best_idx = int(torch.argmax(scores).item())
+
+        melhor_pokemon = self.names[best_idx]
+        melhor_score = scores[best_idx].item()
+
+        return melhor_pokemon, melhor_score
 
 
 class Autocatcher(commands.Bot):
@@ -39,37 +114,14 @@ class Autocatcher(commands.Bot):
     ) -> None:
         super().__init__(command_prefix="?", description=description, self_bot=True)
 
-        # configs do model
-        self.EMBEDDINGS_PATH = emb_model_path
-        self.model_device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model, self.base_embeddings = load_model(
-            self.model_device, self.EMBEDDINGS_PATH
-        )
-        items = list(self.base_embeddings.items())
-        self.names = [k for k, _ in items]
-        self.names = list(self.base_embeddings.keys())
-        self.base_tensor = torch.stack(list(self.base_embeddings.values())).to(
-            self.model_device
-        )  # shape: [N, D]
-        self.base_tensor = F.normalize(self.base_tensor, dim=1)
-        self.transform = transforms.Compose(
-            [
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
-            ]
-        )
-
-        assert os.path.exists(self.EMBEDDINGS_PATH), (
-            f"{self.EMBEDDINGS_PATH} not found in files."
-        )
+        self.pokemon_model = PokemonModel(emb_model_path)
+        self.executor = ThreadPoolExecutor(max_workers=4)
+        self.queue = asyncio.Queue()
 
         self.is_sending_rank = is_sending_rank
-        self.executor = ThreadPoolExecutor(max_workers=4)
         self.target_guild_id = target_guild_id
-        self.queue = asyncio.Queue()
+
+        # flags --ap e --dr
         self.pokemon_bot_support = pokemon_bot_support
         self.is_realm_disabled = is_realm_disabled
         # delay depois de processar a imagem
@@ -94,15 +146,16 @@ class Autocatcher(commands.Bot):
                 async with message.channel.typing():
                     nome, _ = await self.loop.run_in_executor(
                         self.executor,
-                        self.identify_pokemon,
+                        self.pokemon_model.predict,
                         img_b,
                     )
                     pokemon = format_pokemon_name(nome)
                     await asyncio.sleep(self.catch_delay)  # delay aleatório
                     await message.channel.send(f"{command} {pokemon}")
 
-            except Exception as e:
-                logging.error(f"Erro no worker: {e}")
+            except Exception:
+                logging.error("process queue error: ")
+                traceback.print_exc()
             finally:
                 self.queue.task_done()
 
@@ -114,36 +167,6 @@ class Autocatcher(commands.Bot):
             return img_bytes
 
     # run in thread
-    def identify_pokemon(self, img_bytes: bytes):
-        embedding = self._get_embedding_from_bytes(img_bytes)
-        embedding = embedding.unsqueeze(0)
-
-        scores = torch.matmul(
-            embedding, self.base_tensor.T
-        )  # eq a: "emb @ tensor" [N, D] -> [D, N] | [1, D] @ [D, N] = [1, N]
-        scores = scores.squeeze(0)  # [N]
-        # pega só o melhor índice (mais rápido que topk)
-        best_idx = int(torch.argmax(scores).item())
-
-        melhor_pokemon = self.names[best_idx]
-        melhor_score = scores[best_idx].item()
-
-        return melhor_pokemon, melhor_score
-
-    def _get_embedding_from_bytes(
-        self,
-        img_bytes: bytes,
-    ):
-        img = process_with_white_background(img_bytes)
-        # img = Image.open(BytesIO(response.content)).convert("RGB")
-        img = self.transform(img).unsqueeze(0).to(self.model_device)  # type: ignore
-
-        with torch.no_grad():
-            emb = self.model(img)
-
-        emb = emb.squeeze()
-        emb = F.normalize(emb, dim=0)
-        return emb
 
     async def on_ready(self):
         logging.info(f"Logged in as {bot.user} (ID: {bot.user.id})")  # type: ignore
@@ -179,43 +202,12 @@ class Autocatcher(commands.Bot):
         self.executor.shutdown()
 
 
-def load_model(
-    device,
-    emb_path,
-):
-    model = models.mobilenet_v2(
-        weights=models.MobileNet_V2_Weights.DEFAULT
-    )  # MobileNEt Modelo feito para uso no Mobile
-    model.classifier = torch.nn.Identity()  # type: ignore
-    model.eval()  # model.eval() feito para parar o treinamento do modelo, pelo q eu entendi
-    model.to(device)
-
-    # ----- LOAD DOS EMBEDDINGS -----
-    base_embeddings = torch.load(emb_path, map_location=device, weights_only=False)
-    logging.info(f"Embeddings model loaded (Path: {emb_path}) (Device: {device}")
-    return model, base_embeddings
-
-
 # white backgroud pois no preto a IA poderia confundir as bordas dos pokemons com o fundo preto.
 def process_with_white_background(image: bytes) -> Image.Image:
     img_rgba = Image.open(BytesIO(image)).convert("RGBA")
     fundo_branco = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
     img_final = Image.alpha_composite(fundo_branco, img_rgba)
     return img_final.convert("RGB")
-
-
-# identify pokemon padrãozinho
-# def identify_pokemon(embedding):
-#     melhor_pokemon = None
-#     melhor_score = -1
-
-#     for nome, emb in base_embeddings.items():
-#         score = F.cosine_similarity(embedding, emb, dim=0).item()
-#         if score > melhor_score:
-#             melhor_score = score
-#             melhor_pokemon = nome
-
-#     return melhor_pokemon, melhor_score
 
 
 def save_message_log(data: dict):
@@ -243,7 +235,7 @@ def get_args():
         "--ap", "--active-pokemon", action="store_true", dest="is_pokemon_bot_supported"
     )
     argument_parser.add_argument(
-        "--dr--deactive-pokerealm", action="store_true", dest="is_realm_disabled"
+        "--dr", "--disable-pokerealm", action="store_true", dest="is_realm_disabled"
     )
     argument_parser.add_argument(
         "-d",
