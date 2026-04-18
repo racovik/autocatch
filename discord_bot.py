@@ -7,7 +7,7 @@ import re
 import json
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 import traceback
 
 import discord
@@ -138,18 +138,17 @@ class Autocatcher(commands.Bot):
         while True:
             item = await self.queue.get()
             message: discord.Message
-            image_url: str
-            message, image_url, command = item
+            image_bytes: bytes
+            message, image_bytes, command = item
 
             try:
-                img_b = await self.get_img(image_url)
                 async with message.channel.typing():
-                    nome, _ = await self.loop.run_in_executor(
+                    name, _ = await self.loop.run_in_executor(
                         self.executor,
                         self.pokemon_model.predict,
-                        img_b,
+                        image_bytes,
                     )
-                    pokemon = format_pokemon_name(nome)
+                    pokemon = format_pokemon_name(name)
                     await asyncio.sleep(self.catch_delay)  # delay aleatório
                     await message.channel.send(f"{command} {pokemon}")
 
@@ -159,12 +158,19 @@ class Autocatcher(commands.Bot):
             finally:
                 self.queue.task_done()
 
-    async def get_img(self, url) -> bytes:
-        assert self.session is not None
-        async with self.session.get(url) as response:
-            response.raise_for_status()
-            img_bytes = await response.read()
-            return img_bytes
+    async def get_img(self, url) -> Optional[bytes]:
+        if self.session is not None:
+            try:
+                async with self.session.get(url) as response:
+                    response.raise_for_status()
+                    img_bytes = await response.read()
+                    return img_bytes
+            except Exception as e:
+                logging.error(f"Error fetching image from bot: {e}")
+                traceback.print_exc()
+                return None
+        logging.warning("Session is not initialized, cannot fetch image.")
+        return None
 
     # run in thread
 
@@ -179,21 +185,24 @@ class Autocatcher(commands.Bot):
                     embed = message.embeds[0]
                     title_clean = (embed.title or "").lower()
                     if "wild" in title_clean and "pokémon" in title_clean:
-                        image_url = embed.image.url
                         if embed.image is None:
+                            return
+                        image_url = embed.image.url
+                        img_b = await self.get_img(image_url)
+                        if img_b is None:
                             return
                         if (
                             message.author.id == 665301904791699476
                             and not self.is_realm_disabled
                         ):
                             command = "<@665301904791699476> c"
-                            await self.queue.put((message, image_url, command))
+                            await self.queue.put((message, img_b, command))
                         if (
                             message.author.id == 669228505128501258
                             and self.pokemon_bot_support
                         ):
                             command = "<@669228505128501258> c"
-                            await self.queue.put((message, image_url, command))
+                            await self.queue.put((message, img_b, command))
 
     async def close(self):
         await super().close()
